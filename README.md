@@ -13,7 +13,6 @@ Group project
     2. Generation and Consumption Limits: Each generator and consumer is subject to their respective capacity limits
 
 
-
 ## Implementation
 This section provides a detailed explanation of the Python code used to implement the market-clearing model with Pyomo.
 
