@@ -1,0 +1,16 @@
+# Problem 2.2 base
+
+Generator, Capacity [MW],	Marginal cost [NOK/MWh],	Location,	Slack bus
+Gen 1,	1000,	300,	Node 1,	SANN
+Gen 2,	1000,	1000,	Node 2,	USANN
+Gen 3,	1000,	600,	Node 3,	USANN
+
+Load unit,	Demand [MW],	Location
+Load 1,	200,	Node 1
+Load 2,	200,	Node 2
+Load 3,	500,	Node 3
+
+Line,	Capacity [MW],	Susceptance [p.u]
+Line 1-2,	500,	-20
+Line 1-3,	500,	-10
+Line 2-3,	100,	-30

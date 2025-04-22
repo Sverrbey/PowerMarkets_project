@@ -11,6 +11,11 @@ Converted to Python/Pyomo for semester 2018/2019:
 
   (c) Kasper Emil Thorvaldsen, December 2018
 
+
+Utilized to solve the course project for TET4185 Power Markets
+    (c) Bastian Øie, May 2025
+        Sverre Beyer, May 2025
+        Aurora Vinslid, May 2025
 """
 
 import numpy as np
