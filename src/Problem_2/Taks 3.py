@@ -1,17 +1,21 @@
 import pyomo.environ as pyo
 from pyomo.opt import SolverFactory
+import matplotlib.pyplot as plt
 
 def main():
     # Informasjon
     
     # Generator data
-    gen1 = {'Generator': 'G1', 'Capacity': 1000, 'Marginal cost': 300, 'Location': 'Node 1', 'Slack bus': True}
-    gen2 = {'Generator': 'G2', 'Capacity': 1000, 'Marginal cost': 1000, 'Location': 'Node 2', 'Slack bus': False}
-    gen3 = {'Generator': 'G3', 'Capacity': 1000, 'Marginal cost': 600, 'Location': 'Node 3', 'Slack bus': False}   # Endre til 1000 på oppgave c
- 
+    gens = [
+        {'Gen': 'Gen 1_1', 'Capacity': 300, 'MarginalCost': 200, 'Location': 1, 'Slack': True},
+        {'Gen': 'Gen 1_2', 'Capacity': 400, 'MarginalCost': 300, 'Location': 1, 'Slack': True},
+        {'Gen': 'Gen 1_3', 'Capacity': 300, 'MarginalCost': 800, 'Location': 1, 'Slack': True},
+        {'Gen': 'Gen 2',   'Capacity': 1000, 'MarginalCost': 1000, 'Location': 2, 'Slack': False},
+        {'Gen': 'Gen 3',   'Capacity': 1000, 'MarginalCost': 600, 'Location': 3, 'Slack': False}
+    ]
 
     # Bruk en liste med generator-dictionaryer
-    generators = [gen1, gen2, gen3]
+
     
     # Transmission line data
     line12 = {'Line': 'L12', 'Capacity': 500, 'Substation': -20}
@@ -29,12 +33,14 @@ def main():
 
     # Lag lister for generatorer, linjer og last
 
-    gen_cap = {i+1: gen['Capacity'] for i, gen in enumerate(generators)}
-    gen_cost = {i+1: gen['Marginal cost'] for i, gen in enumerate(generators)}
-    demand = {i+1: ld['Demand'] for i, ld in enumerate(last)}
+    gen_capacity = {g['Gen']: g['Capacity'] for g in gens}
+    gen_cost = {g['Gen']: g['MarginalCost'] for g in gens}
+    gen_node = {g['Gen']: g['Location'] for g in gens}
+
+
+    demand = {ld['Location']: ld['Demand'] for ld in last}
     linecap = {le['Line']: le['Capacity'] for le in linjer}
     substation = {le['Line']: le['Substation'] for le in linjer}
-
     
 
     # Create a model
@@ -42,37 +48,41 @@ def main():
     # Define sets
     model.N = pyo.Set(initialize=[1, 2, 3])                 # Noder
     model.L = pyo.Set(initialize=['L12', 'L13', 'L23'])     # Linjer
+    model.G = pyo.Set(initialize=list(gen_capacity.keys())) 
 
     # Variabler
     model.theta = pyo.Var(model.N)                          # Spenningsvinkel
-    model.gen = pyo.Var(model.N, bounds=(0, None))          # Produksjon
+    model.gen = pyo.Var(model.G, bounds=(0, None))          # Produksjon
     model.flow = pyo.Var(model.L)                           # Flyten i linjene
 
     # Parameter
+    model.GenCapacity = pyo.Param(model.G, initialize=gen_capacity)
+    model.GenCost = pyo.Param(model.G, initialize=gen_cost)
+    model.GenNode = pyo.Param(model.G, initialize=gen_node)
     model.Demand = pyo.Param(model.N, initialize=demand)
-    model.GenCap = pyo.Param(model.N, initialize=gen_cap)
-    model.GenCost = pyo.Param(model.N, initialize=gen_cost)
     model.LineCap = pyo.Param(model.L, initialize=linecap)
     model.B = pyo.Param(model.L, initialize=substation)
 
     # Objective function - minimere produksjonskostnadene
     def obj_rule(model):
-        return sum(model.gen[n] * model.GenCost[n] for n in model.N)
+        return sum(model.gen[g] * model.GenCost[g] for g in model.G)
     model.OBJ = pyo.Objective(rule=obj_rule, sense=pyo.minimize)
 
     # Begrensinger
-    def power_balance(model, n):
+    def power_balance_rule(model, n):
+        prod = sum(model.gen[g] for g in model.G if model.GenNode[g] == n)
+
         flows = {
             1: model.flow['L12'] + model.flow['L13'],
             2: -model.flow['L12'] + model.flow['L23'],
             3: -model.flow['L13'] - model.flow['L23']
         }
-        return model.gen[n] - model.Demand[n] == flows[n]
-    model.power_balance_const = pyo.Constraint(model.N, rule=power_balance)
+        return prod - model.Demand[n] == flows[n]
+    model.power_balance_const = pyo.Constraint(model.N, rule=power_balance_rule)
 
-    def gen_capacity(model, n):
-        return model.gen[n] <= model.GenCap[n]
-    model.gen_capacity_const = pyo.Constraint(model.N, rule=gen_capacity)
+    def gen_capacity_rule(model, g):
+        return model.gen[g] <= model.GenCapacity[g]
+    model.gen_capacity_const = pyo.Constraint(model.G, rule=gen_capacity_rule)
 
     def line_flow_rule(model, l):
         if l == 'L12':
@@ -101,32 +111,38 @@ def main():
     results = opt.solve(model, tee=True)
     
     # Skriv ut resultater
-    print("\n=== DCOPF Resultater ===")
+    print("\n=== DCOPF Resultater: Multiple Generators ===")
+    print("\nProduksjon per generator (MW):")
+    production = {}
+    for g in model.G:
+        production[g] = pyo.value(model.gen[g])
+        print(f"{g} (Node {model.GenNode[g]}): {production[g]:.2f} MW")
     
-    print("\nProduksjon (MW):")
-    for n in model.N:
-        print(f"Node {n}: {pyo.value(model.gen[n]):.2f}")
-    
-    print("\nNode vinkel (radians):")
+    print("\nNode spenningsvinkler (radians):")
     for n in model.N:
         print(f"Node {n}: {pyo.value(model.theta[n]):.2f}")
     
-    print("\nFlyt i linjene (MW):")
+    print("\nLinjeflyt (MW):")
     for l in model.L:
         print(f"Line {l}: {pyo.value(model.flow[l]):.2f}")
     
     print("\nNodal Prices (NOK/MWh):")
     for n in model.N:
-        # Her henter vi dualverdier fra kraftbalansebetingelsen
-        print(f"Node {n}: {model.dual[model.power_balance_const[n]]:.2f}")
+        dual_vale = model.dual[model.power_balance_const[n]]
+        print(f"Node {n}: {dual_vale:.2f} NOK/MWh")
     
-    print("\nBegrensninger i linjene:")
-    for l in model.L:
-        flow = abs(pyo.value(model.flow[l]))
-        if abs(flow - model.LineCap[l]) < 1e-4:
-            print(f"Line {l} is congested at {flow:.2f} MW")
-            
     print(f"\nTotal System Cost: {pyo.value(model.OBJ):.2f} NOK")
+
+    gen_names = list(production.keys())
+    prod_values = [production[g] for g in gen_names]
+    
+    plt.figure(figsize=(8, 4))
+    plt.bar(gen_names, prod_values)
+    plt.xlabel("Generator")
+    plt.ylabel("Produksjon (MW)")
+    plt.title("Produksjon per generator")
+    plt.tight_layout()
+    plt.show()
 
 if __name__ == "__main__":
     main()
