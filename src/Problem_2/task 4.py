@@ -1,148 +1,170 @@
+"""
+task 4.py  – TET4185 Problem 2‑4
+--------------------------------
+Full Pyomo‑modell for 3‑nodes DC‑OPF med
+• flere generatorer i node 1
+• flere (delvis fleksible) laster i node 2
+• valgfritt kostnads‑ eller velferdsmål
+
+Bruk:
+    python task\ 4.py                 # velferdsmaksimering
+    python task\ 4.py --cost_min      # kun kostnadsminimering (del 2‑4 a)
+"""
+import argparse
 import pyomo.environ as pyo
 from pyomo.opt import SolverFactory
 import matplotlib.pyplot as plt
 
-def main():
-    # Informasjon
-    
-    # Generator data
-    gens = [
-        {'Gen': 'Gen 1_1', 'Capacity': 300, 'MarginalCost': 200, 'Location': 1, 'Slack': True},
-        {'Gen': 'Gen 1_2', 'Capacity': 400, 'MarginalCost': 300, 'Location': 1, 'Slack': True},
-        {'Gen': 'Gen 1_3', 'Capacity': 300, 'MarginalCost': 800, 'Location': 1, 'Slack': True},
-        {'Gen': 'Gen 2',   'Capacity': 1000, 'MarginalCost': 1000, 'Location': 2, 'Slack': False},
-        {'Gen': 'Gen 3',   'Capacity': 1000, 'MarginalCost': 600, 'Location': 3, 'Slack': False}
-    ]
+# ----------------------------- data ----------------------------- #
+# Generator‑data
+GENS = [
+    {"Gen": "Gen 1_1", "Capacity": 300,  "MarginalCost": 200,  "Node": 1},
+    {"Gen": "Gen 1_2", "Capacity": 400,  "MarginalCost": 300,  "Node": 1},
+    {"Gen": "Gen 1_3", "Capacity": 300,  "MarginalCost": 800,  "Node": 1},
+    {"Gen": "Gen 2",   "Capacity": 1000, "MarginalCost": 1000, "Node": 2},
+    {"Gen": "Gen 3",   "Capacity": 1000, "MarginalCost": 600,  "Node": 3},
+]
 
-    # Bruk en liste med generator-dictionaryer
+# Last‑data
+LOADS = [
+    {"Load": "Load1",   "Demand": 200, "WTP": None, "Node": 1},  # uelastisk
+    {"Load": "Load2_1", "Demand": 200, "WTP": 1300, "Node": 2},
+    {"Load": "Load2_2", "Demand": 250, "WTP":  800, "Node": 2},
+    {"Load": "Load2_3", "Demand": 250, "WTP":  500, "Node": 2},
+    {"Load": "Load3",   "Demand": 500, "WTP": None, "Node": 3},  # uelastisk
+]
 
-    
-    # Transmission line data
-    line12 = {'Line': 'L12', 'Capacity': 500, 'Substation': -20}
-    line13 = {'Line': 'L13', 'Capacity': 500, 'Substation': -10}
-    line23 = {'Line': 'L23', 'Capacity': 100, 'Substation': -30}
+# Linje‑data  (B-verdiene er gitt negative i Excel; vi bruker absoluttverdiene)
+LINES = [
+    {"Line": "L12", "Capacity": 500, "B": 20},   # |‑20| = 20
+    {"Line": "L13", "Capacity": 500, "B": 10},
+    {"Line": "L23", "Capacity": 100, "B": 30},
+]
+LINE_ENDS = {"L12": (1, 2), "L13": (1, 3), "L23": (2, 3)}
 
-    linjer = [line12, line13, line23]
+# ----------------------------- modell --------------------------- #
+def build_model(use_welfare=True) -> pyo.ConcreteModel():
+    m = pyo.ConcreteModel(name="3‑node DC‑OPF")
 
-    # Load data
-    load1 = {'Load': 'Load1', 'Demand': 200, 'Location': 1}
-    load2 = {'Load': 'Load2', 'Demand': 200, 'Location': 2}
-    load3 = {'Load': 'Load3', 'Demand': 500, 'Location': 3}
+    # --- menger --- #
+    m.N = pyo.Set(initialize=[1, 2, 3])                           # noder
+    m.L = pyo.Set(initialize=[l["Line"] for l in LINES])           # linjer
+    m.G = pyo.Set(initialize=[g["Gen"]  for g in GENS])            # generatorer
+    m.D = pyo.Set(initialize=[d["Load"] for d in LOADS])           # laster
 
-    last = [load1, load2, load3]
+    # --- parametere --- #
+    m.CapGen = pyo.Param(m.G, initialize={g["Gen"]: g["Capacity"]      for g in GENS})
+    m.Cost   = pyo.Param(m.G, initialize={g["Gen"]: g["MarginalCost"]  for g in GENS})
+    m.NodeG  = pyo.Param(m.G, initialize={g["Gen"]: g["Node"]          for g in GENS})
 
-    # Lag lister for generatorer, linjer og last
+    m.MaxLoad = pyo.Param(m.D, initialize={d["Load"]: d["Demand"] for d in LOADS})
+    m.WTP     = pyo.Param(m.D, initialize={d["Load"]: d["WTP"] or 0   for d in LOADS})
+    m.NodeD   = pyo.Param(m.D, initialize={d["Load"]: d["Node"]        for d in LOADS})
 
-    gen_capacity = {g['Gen']: g['Capacity'] for g in gens}
-    gen_cost = {g['Gen']: g['MarginalCost'] for g in gens}
-    gen_node = {g['Gen']: g['Location'] for g in gens}
+    m.CapLine = pyo.Param(m.L, initialize={l["Line"]: l["Capacity"] for l in LINES})
+    m.B       = pyo.Param(m.L, initialize={l["Line"]: l["B"]        for l in LINES})
 
+    # --- variabler --- #
+    m.Pg   = pyo.Var(m.G, bounds=lambda m, g: (0, m.CapGen[g]))
+    m.Pd   = pyo.Var(m.D, bounds=lambda m, d: (0, m.MaxLoad[d]))
+    m.F    = pyo.Var(m.L, bounds=lambda m, l: (-m.CapLine[l], m.CapLine[l]), initialize=0)
+    m.theta = pyo.Var(m.N, initialize=0)  # spenningvinkler (rad)
 
-    demand = {ld['Location']: ld['Demand'] for ld in last}
-    linecap = {le['Line']: le['Capacity'] for le in linjer}
-    substation = {le['Line']: le['Substation'] for le in linjer}
-    
+    # --- infleksible laster --- #
+    inflex = [d["Load"] for d in LOADS if d["WTP"] is None]
+    def must_serve(m, d):
+        if d in inflex:
+            return m.Pd[d] == m.MaxLoad[d]
+        return pyo.Constraint.Skip
+    m.cover_inflex = pyo.Constraint(m.D, rule=must_serve)
 
-    # Create a model
-    model = pyo.ConcreteModel()
-    # Define sets
-    model.N = pyo.Set(initialize=[1, 2, 3])                 # Noder
-    model.L = pyo.Set(initialize=['L12', 'L13', 'L23'])     # Linjer
-    model.G = pyo.Set(initialize=list(gen_capacity.keys())) 
+    # --- kraftbalanse --- #
+    def power_balance(m, n):
+        prod = sum(m.Pg[g] for g in m.G if m.NodeG[g] == n)
+        cons = sum(m.Pd[d] for d in m.D if m.NodeD[d] == n)
+        flow_out = sum(m.F[l] for l in m.L if LINE_ENDS[l][0] == n)
+        flow_in  = sum(m.F[l] for l in m.L if LINE_ENDS[l][1] == n)
+        return prod - cons == flow_out - flow_in
+    m.balance = pyo.Constraint(m.N, rule=power_balance)
 
-    # Variabler
-    model.theta = pyo.Var(model.N)                          # Spenningsvinkel
-    model.gen = pyo.Var(model.G, bounds=(0, None))          # Produksjon
-    model.flow = pyo.Var(model.L)                           # Flyten i linjene
+    # --- linjeflyt‑likning --- #
+    def line_flow(m, l):
+        i, j = LINE_ENDS[l]
+        return m.F[l] == m.B[l] * (m.theta[i] - m.theta[j])
+    m.line_eq = pyo.Constraint(m.L, rule=line_flow)
 
-    # Parameter
-    model.GenCapacity = pyo.Param(model.G, initialize=gen_capacity)
-    model.GenCost = pyo.Param(model.G, initialize=gen_cost)
-    model.GenNode = pyo.Param(model.G, initialize=gen_node)
-    model.Demand = pyo.Param(model.N, initialize=demand)
-    model.LineCap = pyo.Param(model.L, initialize=linecap)
-    model.B = pyo.Param(model.L, initialize=substation)
+    # --- referansevinkel --- #
+    m.theta_ref = pyo.Constraint(expr=m.theta[1] == 0)
 
-    # Objective function - minimere produksjonskostnadene
-    def obj_rule(model):
-        return sum(model.gen[g] * model.GenCost[g] for g in model.G)
-    model.OBJ = pyo.Objective(rule=obj_rule, sense=pyo.minimize)
+    # --- mål --- #
+    m.use_welfare = use_welfare
+    def obj_rule(m):
+        if m.use_welfare:
+            return sum(m.Pd[d] * m.WTP[d] for d in m.D) - sum(m.Pg[g] * m.Cost[g] for g in m.G)
+        return sum(m.Pg[g] * m.Cost[g] for g in m.G)
+    sense = pyo.maximize if use_welfare else pyo.minimize
+    m.OBJ = pyo.Objective(rule=obj_rule, sense=sense)
 
-    # Begrensinger
-    def power_balance_rule(model, n):
-        prod = sum(model.gen[g] for g in model.G if model.GenNode[g] == n)
+    # --- suffix for dualer --- #
+    m.dual = pyo.Suffix(direction=pyo.Suffix.IMPORT)
+    return m
 
-        flows = {
-            1: model.flow['L12'] + model.flow['L13'],
-            2: -model.flow['L12'] + model.flow['L23'],
-            3: -model.flow['L13'] - model.flow['L23']
-        }
-        return prod - model.Demand[n] == flows[n]
-    model.power_balance_const = pyo.Constraint(model.N, rule=power_balance_rule)
+# ---------------------- løsning og rapport ---------------------- #
+def solve_and_report(model: pyo.ConcreteModel):
+    solver = SolverFactory("gurobi")
+    results = solver.solve(model, tee=False)
+    model.solutions.load_from(results)
 
-    def gen_capacity_rule(model, g):
-        return model.gen[g] <= model.GenCapacity[g]
-    model.gen_capacity_const = pyo.Constraint(model.G, rule=gen_capacity_rule)
+    print("\n=== NODALE PRISER (dual balance‑eq) ===")
+    for n in model.N:
+        print(f"Node {n}: {model.dual[model.balance[n]]:7.2f}  NOK/MWh")
 
-    def line_flow_rule(model, l):
-        if l == 'L12':
-            return model.flow[l] == model.B[l] * (model.theta[1] - model.theta[2])
-        elif l == 'L13':
-            return model.flow[l] == model.B[l] * (model.theta[1] - model.theta[3])
-        else:  # L23
-            return model.flow[l] == model.B[l] * (model.theta[2] - model.theta[3])
-    model.line_flow_const = pyo.Constraint(model.L, rule=line_flow_rule)
-
-    def line_capacity_upper(model, l):
-        return model.flow[l] <= model.LineCap[l]
-    model.line_capacity_upper = pyo.Constraint(model.L, rule=line_capacity_upper)
-
-    def line_capacity_lower(model, l):
-        return -model.LineCap[l] <= model.flow[l]
-    model.line_capacity_lower = pyo.Constraint(model.L, rule=line_capacity_lower)
-
-    def ref_angle(model):
-        return model.theta[1] == 0
-    model.ref_angle_const = pyo.Constraint(rule=ref_angle)
-
-    # Solve the model
-    opt = SolverFactory('gurobi')
-    model.dual = pyo.Suffix(direction=pyo.Suffix.IMPORT)
-    results = opt.solve(model, tee=True)
-    
-    # Skriv ut resultater
-    print("\n=== DCOPF Resultater: Multiple Generators ===")
-    print("\nProduksjon per generator (MW):")
-    production = {}
+    print("\n=== GENERASJON (MW) ===")
     for g in model.G:
-        production[g] = pyo.value(model.gen[g])
-        print(f"{g} (Node {model.GenNode[g]}): {production[g]:.2f} MW")
-    
-    print("\nNode spenningsvinkler (radians):")
-    for n in model.N:
-        print(f"Node {n}: {pyo.value(model.theta[n]):.2f}")
-    
-    print("\nLinjeflyt (MW):")
-    for l in model.L:
-        print(f"Line {l}: {pyo.value(model.flow[l]):.2f}")
-    
-    print("\nNodal Prices (NOK/MWh):")
-    for n in model.N:
-        dual_vale = model.dual[model.power_balance_const[n]]
-        print(f"Node {n}: {dual_vale:.2f} NOK/MWh")
-    
-    print(f"\nTotal System Cost: {pyo.value(model.OBJ):.2f} NOK")
+        print(f"{g:8s}: {pyo.value(model.Pg[g]):7.2f}")
 
-    gen_names = list(production.keys())
-    prod_values = [production[g] for g in gen_names]
-    
-    plt.figure(figsize=(8, 4))
-    plt.bar(gen_names, prod_values)
-    plt.xlabel("Generator")
-    plt.ylabel("Produksjon (MW)")
+    print("\n=== LAST (MW) ===")
+    for d in model.D:
+        print(f"{d:8s}: {pyo.value(model.Pd[d]):7.2f}")
+
+    print("\n=== LINJEFLYT (MW) ===")
+    for l in model.L:
+        print(f"{l}: {pyo.value(model.F[l]):7.2f}")
+
+    obj_val = pyo.value(model.OBJ)
+    label = "Total velferd" if model.use_welfare else "Total kostnad"
+    print(f"\n{label}: {obj_val:,.2f}  NOK")
+
+    # Surpluser, kapasitetsleie
+    consumer_surplus = sum(pyo.value(model.Pd[d]) * (model.WTP[d] - model.dual[model.balance[model.NodeD[d]]])
+                           for d in model.D if model.WTP[d] > 0)
+    producer_surplus = sum(pyo.value(model.Pg[g]) * (model.dual[model.balance[model.NodeG[g]]] - model.Cost[g])
+                           for g in model.G)
+    print(f"\nKonsumentoverskudd: {consumer_surplus:,.2f}  NOK")
+    print(f"Produsentoverskudd: {producer_surplus:,.2f}  NOK")
+
+    print("\nKapasitetsleie per linje (NOK):")
+    total_rent = 0
+    for l in model.L:
+        i, j = LINE_ENDS[l]
+        rent = (model.dual[model.balance[i]] - model.dual[model.balance[j]]) * pyo.value(model.F[l])
+        total_rent += rent
+        print(f"{l}: {rent:,.2f}")
+    print(f"Total kapasitetsleie: {total_rent:,.2f}  NOK")
+
+    # Plot produksjon
+    plt.bar([str(g) for g in model.G], [pyo.value(model.Pg[g]) for g in model.G])
+    plt.ylabel("MW")
     plt.title("Produksjon per generator")
     plt.tight_layout()
     plt.show()
 
+# ----------------------------- main ----------------------------- #
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--cost_min", action="store_true",
+                        help="Løs med kostnadsminimering i stedet for velferd")
+    args = parser.parse_args()
+
+    mdl = build_model(use_welfare=not args.cost_min)
+    solve_and_report(mdl)
