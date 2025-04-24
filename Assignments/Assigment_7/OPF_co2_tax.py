@@ -21,8 +21,10 @@ def main():
     L = dict(zip(consumer.index, consumer["Pd"])) # Load demand
     U = dict(zip(consumer.index, consumer["Ud"])) # Utility cost
     dema = dict(zip(consumer.index, consumer["Area"]))
+    
+    print(PGmax)
 
-    DCOPF_model(generators, PGmax, C, demands, L, U, E, prod, dema)
+    #DCOPF_model(generators, PGmax, C, demands, L, U, E, prod, dema)
 
     return
 
