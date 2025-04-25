@@ -7,15 +7,16 @@ def main():
     # ----------------------------- data ----------------------------- #
     # Generator‑data
     gens = [
-        {"Gen": "Gen 1_1", "Capacity": 300,  "MarginalCost": 200,  "Node": 1},
-        {"Gen": "Gen 1_2", "Capacity": 400,  "MarginalCost": 300,  "Node": 1},
-        {"Gen": "Gen 1_3", "Capacity": 300,  "MarginalCost": 800,  "Node": 1},
-        {"Gen": "Gen 2",   "Capacity": 1000, "MarginalCost": 1000, "Node": 2},
-        {"Gen": "Gen 3",   "Capacity": 1000, "MarginalCost": 600,  "Node": 3},
+        {"Gen": "Gen 1_1", "Capacity": 300,  "MarginalCost": 200,   "CO2": 1500,  "Node": 1},
+        {"Gen": "Gen 1_2", "Capacity": 400,  "MarginalCost": 300,   "CO2": 700,   "Node": 1},
+        {"Gen": "Gen 1_3", "Capacity": 300,  "MarginalCost": 800,   "CO2": 100,   "Node": 1},
+        {"Gen": "Gen 2",   "Capacity": 1000, "MarginalCost": 1000,  "CO2": 0,     "Node": 2},
+        {"Gen": "Gen 3",   "Capacity": 1000, "MarginalCost": 600,   "CO2": 1000,  "Node": 3},
     ]   
 
     generators = [i+1 for i, gen in enumerate(gens)]
     location_g = {i+1: gen['Node'] for i, gen in enumerate(gens)}
+    emissions = {i+1: gen['CO2'] for i, gen in enumerate(gens)}
     
 
     # Load-data (max demand and willingness-to-pay)
@@ -52,10 +53,11 @@ def main():
                                         linecap,
                                         substation,
                                         location_g,
-                                        location_d)
+                                        location_d,
+                                        emissions)
 
     # Create a model
-def DCOPF_model_multiple_gens_and_loads(generators,loads, PGmax, C, D, U, linecap, substation, location_g, location_d):
+def DCOPF_model_multiple_gens_and_loads(generators,loads, PGmax, C, D, U, linecap, substation, location_g, location_d, emissions):
     model = pyo.ConcreteModel()
 
     # Define sets
@@ -70,6 +72,7 @@ def DCOPF_model_multiple_gens_and_loads(generators,loads, PGmax, C, D, U, lineca
     model.U = pyo.Param(model.d, initialize=U)
     model.location_g = pyo.Param(model.g, initialize=location_g)
     model.location_d = pyo.Param(model.d, initialize=location_d)
+    model.emissions = pyo.Param(model.g, initialize=emissions)
 
     model.linecap = pyo.Param(model.l, initialize=linecap)
     model.substation = pyo.Param(model.l, initialize=substation)
@@ -96,6 +99,11 @@ def DCOPF_model_multiple_gens_and_loads(generators,loads, PGmax, C, D, U, lineca
     def generator_capacity_rule(model, g):
         return  model.p_G[g] <= model.PGmax[g]
     model.generator_capacity = pyo.Constraint(model.g, rule=generator_capacity_rule)
+
+    def emissions_rule(model, g):
+    #    return model.p_G[g] >= 0.2 * sum(model.p_D[d] for d in model.d) if (model.emissions[g] == 0) else pyo.Constraint.Skip  #Kommenter ut denne til senere
+        return model.p_G[g] * model.emissions[g] >= 1000000000
+    model.emissions_rule = pyo.Constraint(model.g, rule=emissions_rule)
 
     # Demand constraints
     def demand_rule(model, d):
