@@ -7,7 +7,7 @@ def main():
     # Generator data
     gen1 = {'Generator': 'G1', 'Capacity': 1000, 'Marginal cost': 300, 'Location': 'Node 1', 'Slack bus': True}
     gen2 = {'Generator': 'G2', 'Capacity': 1000, 'Marginal cost': 1000, 'Location': 'Node 2', 'Slack bus': False}
-    gen3 = {'Generator': 'G3', 'Capacity': 1000, 'Marginal cost': 600, 'Location': 'Node 3', 'Slack bus': False}   # Endre til 1000 på oppgave c
+    gen3 = {'Generator': 'G3', 'Capacity': 1000, 'Marginal cost': 1000, 'Location': 'Node 3', 'Slack bus': False}   # Endre til 1000 på oppgave c
  
 
     # Bruk en liste med generator-dictionaryer
@@ -22,7 +22,7 @@ def main():
 
     # Load data
     load1 = {'Load': 'Load1', 'Demand': 200, 'Location': 1}
-    load2 = {'Load': 'Load2', 'Demand': 200, 'Location': 2}
+    load2 = {'Load': 'Load2', 'Demand': 300, 'Location': 2}
     load3 = {'Load': 'Load3', 'Demand': 500, 'Location': 3}
 
     last = [load1, load2, load3]
@@ -35,7 +35,7 @@ def main():
     linecap = {le['Line']: le['Capacity'] for le in linjer}
     substation = {le['Line']: le['Substation'] for le in linjer}
 
-    
+   # 416 666.67 NOK
 
     # Create a model
     model = pyo.ConcreteModel()
@@ -45,7 +45,7 @@ def main():
 
     # Variabler
     model.theta = pyo.Var(model.N)                          # Spenningsvinkel
-    model.gen = pyo.Var(model.N, bounds=(0, None))          # Produksjon
+    model.gen = pyo.Var(model.N, within=pyo.NegativeReals)          # Produksjon
     model.flow = pyo.Var(model.L)                           # Flyten i linjene
 
     # Parameter
