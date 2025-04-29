@@ -1,0 +1,6 @@
+Generator,Capacity [pu],Marginal cost NOK/puh],	Location,CO2 emission [kg/puh],Slack bus
+11,0.300,200000,1,1500000,True
+12,0.400,300000,1,700000,True
+13,0.300,800000,1,100000,True
+2,1,1000000,2,0,False
+3,1,600000,3,1000000,False

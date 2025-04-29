@@ -1,9 +1,0 @@
-Technology,Emission_intensity
-Wind,0
-Solar,0
-Hydro,11
-Nuclear,5
-Biomass,439
-Gas,602
-Coal,1119
-Oil,1125

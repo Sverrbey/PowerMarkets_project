@@ -1,3 +1,23 @@
+#-*- coding: utf-8 -*-
+"""
+Optimal Power Flow with DC power flow
+   =====================================
+
+  (c) Gerard Doorman, December 2012
+      Hossein farahmand, February 2016
+
+Originally implemented for MOSEL XPRESS
+
+Converted to Python/Pyomo for semester 2018/2019:
+
+  (c) Kasper Emil Thorvaldsen, December 2018
+
+Utilized to solve the course project for TET4185 Power Markets
+    (c) Bastian Øie, May 2025
+        Sverre Beyer, May 2025
+        Aurora Vinslid, May 2025
+"""
+
 import numpy as np
 import sys
 import time

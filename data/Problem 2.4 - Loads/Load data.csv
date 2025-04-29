@@ -1,0 +1,6 @@
+Load unit,Demand [pu],Marginal,Location
+1,0.2,nan,1
+21,0.2,1300000,2
+22,0.25,8000002
+23,0.25,5000002
+3,0.5,nan,3

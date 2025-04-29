@@ -1,0 +1,4 @@
+Generator,Capacity [pu],Marginal cost [NOK/puh],Location,Slack bus
+1,1,300000,1,True
+2,1,1000000,2,False
+3,1,600000,3,False
