@@ -1,6 +1,6 @@
-Load unit,Demand [pu],Marginal,Location
+Load unit,Demand [pu],Marginal cost [NOK/puh],Location
 1,0.2,nan,1
 21,0.2,1300000,2
-22,0.25,8000002
-23,0.25,5000002
+22,0.25,800000,2
+23,0.25,500000,2
 3,0.5,nan,3

@@ -1,7 +1,7 @@
 import pyomo.environ as pyo
 from pyomo.opt import SolverFactory
 
-def DCOPF_model_task_2(N, L, D, G, PGmax, C, demands, linecap, suseptance, S_base):
+def DCOPF_model(N, L, D, G, PGmax, C, demands, linecap, suseptance, S_base):
     model = pyo.ConcreteModel()
 
     # Define sets
@@ -14,7 +14,7 @@ def DCOPF_model_task_2(N, L, D, G, PGmax, C, demands, linecap, suseptance, S_bas
     model.C         = pyo.Param(model.g, initialize=C)
     model.Demands   = pyo.Param(model.d, initialize=demands)
     
-    model.linecap       = pyo.Param(model.l, initialize=linecap)
+    model.linecap       = pyo.Param(model.l, initialize=linecap, within=pyo.NonNegativeReals)
     model.suseptance    = pyo.Param(model.l, initialize=suseptance)
 
     # Defining Varaibles
@@ -43,14 +43,10 @@ def DCOPF_model_task_2(N, L, D, G, PGmax, C, demands, linecap, suseptance, S_bas
         return model.p_G[g] - model.Demands[g] == flows[g]
     model.balance = pyo.Constraint(model.g, rule=power_balance)
 
-    # line capacity constraints
+    # Line capacity constraints
     def line_capacity_rule(model, l):
-        return model.flow[l] <= model.linecap[l]
+        return (-model.linecap[l], model.flow[l], model.linecap[l])
     model.line_capacity = pyo.Constraint(model.l, rule=line_capacity_rule)
-
-    def line_capacity_lower_rule(model, l):
-        return -model.linecap[l] <= model.flow[l]
-    model.line_capacity_lower = pyo.Constraint(model.l, rule=line_capacity_lower_rule)
 
     def flow_rule(model, l):
         if l == 1:
@@ -105,7 +101,7 @@ def DCOPF_model_task_2(N, L, D, G, PGmax, C, demands, linecap, suseptance, S_bas
     # Extract and display dual values for line capacity constraints
     print("\nDual values for line capacity constraints [NOK/MWh]:")
     for l in model.l:
-        dual_value = model.dual.get(model.flow_rule[l])
+        dual_value = model.dual.get(model.line_capacity[l])
         if dual_value is not None:
             print(f"Line {l}: {dual_value/S_base:.2f}")
         else:

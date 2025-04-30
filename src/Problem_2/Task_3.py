@@ -2,7 +2,7 @@ import pyomo.environ as pyo
 from pyomo.opt import SolverFactory
 import matplotlib.pyplot as plt
 
-def DCOPF_model_task_3(N, L, D, G, PGmax, C, demands, linecap, suseptance, location_g, S_base):
+def DCOPF_model_multiple_generators(N, L, D, G, PGmax, C, demands, linecap, suseptance, location_g, S_base):
     model = pyo.ConcreteModel()
 
     # Define sets
@@ -13,11 +13,11 @@ def DCOPF_model_task_3(N, L, D, G, PGmax, C, demands, linecap, suseptance, locat
 
     model.PGmax = pyo.Param(model.g, initialize=PGmax)
     model.C = pyo.Param(model.g, initialize=C)
-    model.Demands = pyo.Param(model.d, initialize=D)
+    model.Demands = pyo.Param(model.d, initialize=demands)
     model.location_g = pyo.Param(model.g, initialize=location_g)
 
 
-    model.linecap = pyo.Param(model.l, initialize=linecap)
+    model.linecap    = pyo.Param(model.l, initialize=linecap, within=pyo.NonNegativeReals)
     model.suseptance = pyo.Param(model.l, initialize=suseptance)
 
     # Defining Varaibles
@@ -36,12 +36,12 @@ def DCOPF_model_task_3(N, L, D, G, PGmax, C, demands, linecap, suseptance, locat
     def generator_capacity_rule(model, g):
         return  model.p_G[g] <= model.PGmax[g]
     model.generator_capacity = pyo.Constraint(model.g, rule=generator_capacity_rule)
-
+ 
     def power_balance(model, n):
         flows = {
-            1: model.flow['L12'] + model.flow['L13'],
-            2: -model.flow['L12'] + model.flow['L23'],
-            3: -model.flow['L13'] - model.flow['L23']
+            1: model.flow[1] + model.flow[2],
+            2: -model.flow[1] + model.flow[3],
+            3: -model.flow[2] - model.flow[3]
         }
         return sum(model.p_G[g] for g in model.g if model.location_g[g] == n) - model.Demands[n] == flows[n]
     model.balance = pyo.Constraint(model.n, rule=power_balance)
@@ -72,11 +72,10 @@ def DCOPF_model_task_3(N, L, D, G, PGmax, C, demands, linecap, suseptance, locat
     solver = SolverFactory("gurobi")    # Ensure Gurobi is installed and licenced
     model.dual = pyo.Suffix(direction=pyo.Suffix.IMPORT) # For dual variables
     results = solver.solve(model, tee=True)
-    
+
     print(f"{'='*10} Optimal Solution {'='*10}")
     print(f"Total Cost: {model.objective():.2f} NOK")
     
-
     # Extract and display the optimal generation for each generator
     print("\nOptimal generation [MW]:")
     for g in model.g:
@@ -89,10 +88,10 @@ def DCOPF_model_task_3(N, L, D, G, PGmax, C, demands, linecap, suseptance, locat
 
     # Nodal price calculation
     print("\nNodal prices [NOK/MWh]:")
-    for g in model.g:
-        dual_value = model.dual.get(model.balance[g])
+    for n in model.n:
+        dual_value = model.dual.get(model.balance[n])
         if dual_value is not None:
-            print(f"Electricity Price at node {g}: {dual_value/S_base:.2f}")
+            print(f"Electricity Price at node {n}: {dual_value/S_base:.2f}")
         else:
             print(f"Node {g}: No dual value found.")
     
@@ -109,7 +108,7 @@ def DCOPF_model_task_3(N, L, D, G, PGmax, C, demands, linecap, suseptance, locat
     # Extract and display dual values for line capacity constraints
     print("\nDual values for line capacity constraints [NOK/MWh]:")
     for l in model.l:
-        dual_value = model.dual.get(model.flow_rule[l])
+        dual_value = model.dual.get(model.line_capacity[l])
         if dual_value is not None:
             print(f"Line {l}: {dual_value/S_base:.2f}")
         else:
@@ -124,6 +123,8 @@ def DCOPF_model_task_3(N, L, D, G, PGmax, C, demands, linecap, suseptance, locat
     print("\nVoltage angles [rad]:")
     for n in model.n:
         print(f"Node {n}: {pyo.value(model.delta[n]):.4f}")
+
+
 
 
 
