@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
 import pandas as pd
+import sys
+
 from src.Problem_2.Task_2 import DCOPF_model
 from src.Problem_2.Task_3 import DCOPF_model_multiple_generators
 from src.Problem_2.Task_4 import DCOPF_model_multiple_generators_and_loads, DCOPF_model_multiple_generators_and_loads_SW
-from src.Problem_2.Task_5 import DCOPF_model_multiple_gens_and_loads_emissions
+from src.Problem_2.Task_5 import DCOPF_model_multiple_gens_and_loads_emissions_CES, DCOPF_model_multiple_gens_and_loads_emissions_cap_and_trade
+
+from src.Problem_3.OPF_pyomo import OPF_model, Read_Excel, Create_matrices
+from src.Problem_3.OPF_pyomo_CO2 import OPF_model_CO2
 
 def main():
     """ Methodology to run the project problems
@@ -58,7 +63,7 @@ def main():
     # 2.4a) Inelastic loads
     #DCOPF_model_multiple_generators_and_loads(N, L, D, G, PGmax, C, demands, U, linecap, susceptance, location_g, location_d, S_base)
 
-    # 2.4c) Elastic loads
+    # 2.4c) Objective is maximizing Social Welfare + Elastic and inelastic loads
     #DCOPF_model_multiple_generators_and_loads_SW(N, L, D, G, PGmax, C, demands, U, linecap, susceptance, location_g, location_d, S_base)
 
 
@@ -72,9 +77,60 @@ def main():
     emissions = dict(zip(G_data.index, G_data["CO2 emission [kg/puh]"]))
 
     # 2.5 B) CES constraint
-    DCOPF_model_multiple_gens_and_loads_emissions(N, L, D, G, PGmax, C, demands, U, linecap, susceptance, location_g, location_d, emissions, S_base)
+    #DCOPF_model_multiple_gens_and_loads_emissions_CES(N, L, D, G, PGmax, C, demands, U, linecap, susceptance, location_g, location_d, emissions, S_base)
     
+    # 2.5 b) Cap-and-trade constraint
+    #DCOPF_model_multiple_gens_and_loads_emissions_cap_and_trade(N, L, D, G, PGmax, C, demands, U, linecap, susceptance, location_g, location_d, emissions, S_base)
 
+    ## Task 3:
+    # Task 3.2 - Analyzing a wet-year scenario
+    #Data = Read_Excel("data/Nordic_wet.xlsx")    #Master dictionary, created from input data dictionary
+            
+    #Create matrices for the lines and cables
+    #Data = Create_matrices(Data)
+    #OPF_model(Data)    # DCOPF
+    #Data["DCFlow"] = 0
+    #OPF_model(Data)    # ATC
+
+    # Task 3.3 - Dry-year scenario comparison
+    # DCOPF (DCFlow = 1)
+    #Data = Read_Excel("data/Nordic_dry.xlsx")
+    #Data = Create_matrices(Data)
+    #OPF_model(Data)    # DCOPF
+    #Data["DCFlow"] = 0
+    #OPF_model(Data)    # ATC
+
+    # Task 3.4 Phasing out baseload produciton
+    #Data = Read_Excel("data/Nordic_wet.xlsx")    #Master dictionary, created from input data dictionary
+    #Data['Nodes']['GENCAP'][8] -= 8400           # Phasing out baseload production at SE3
+    #Create matrices for the lines and cables
+    #Data = Create_matrices(Data)
+    #OPF_model(Data) #DCOPF
+    #Data["DCFlow"] = 0
+    #OPF_model(Data)    # ATC
+
+
+    ## Task 3.5 - Emission trading system
+    Data = Read_Excel("data/Nordic_wet.xlsx")    #Master dictionary, created from input data dictionary
+    
+    #Carbon intensity
+    Data['Nodes']['EmissionValue'] = {
+        1:0.0340,
+        2:0.0240,
+        3:0.0260,
+        4:0.0550,
+        5:0.0260,
+        6:0.0393,
+        7:0.0393,
+        8:0.0393,
+        9:0.0393,
+        10:0.0590,
+        11:0.0570,
+        12:0.0910
+    }
+    Data["Emissions_cost"] = 65  #EUR/ton CO2
+    Data = Create_matrices(Data)
+    OPF_model_CO2(Data) #DCOPF
 
 if __name__ == "__main__":
     main()

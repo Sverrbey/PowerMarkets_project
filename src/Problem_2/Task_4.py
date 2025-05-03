@@ -48,14 +48,10 @@ def DCOPF_model_multiple_generators_and_loads(N, L, D, G, PGmax, C, demands, U, 
         return sum(model.p_G[g] for g in model.g if model.location_g[g] == n) - sum(model.Demands[d] for d in model.d if model.location_d[d] ==n) == flows[n]
     model.balance = pyo.Constraint(model.n, rule=power_balance)
 
-    # line capacity constraints
+    # Line capacity constraints
     def line_capacity_rule(model, l):
-        return model.flow[l] <= model.linecap[l]
+        return (-model.linecap[l], model.flow[l], model.linecap[l])
     model.line_capacity = pyo.Constraint(model.l, rule=line_capacity_rule)
-
-    def line_capacity_lower_rule(model, l):
-        return -model.linecap[l] <= model.flow[l]
-    model.line_capacity_lower = pyo.Constraint(model.l, rule=line_capacity_lower_rule)
 
     def flow_rule(model, l):
         if l == 1:
@@ -111,16 +107,21 @@ def DCOPF_model_multiple_generators_and_loads(N, L, D, G, PGmax, C, demands, U, 
     print("\nDual values for line capacity constraints [NOK/MWh]:")
     for l in model.l:
         dual_value = model.dual.get(model.line_capacity[l])
-        if dual_value is not None:
+        if dual_value != 0 and dual_value < 0: 
             print(f"Line {l}: {dual_value/S_base:.2f}")
+        elif dual_value != 0 and dual_value > 0: 
+            print(f"Line {l}: {-dual_value/S_base:.2f}") 
+        elif dual_value == 0:
+            print(f"Line {l}: {0.0:.2f}")
         else:
             print(f"Line {l}: No dual value found.")
+
 
     # Extract and display power flow in lines
     print("\nFlow in lines [MW]:")
     for l in model.l:
         print(f"Line {l}: {pyo.value(S_base*model.flow[l]):.2f}")
-
+ 
     # Extract and display voltage angles
     print("\nVoltage angles [rad]:")
     for n in model.n:
@@ -135,27 +136,28 @@ def DCOPF_model_multiple_generators_and_loads_SW(N, L, D, G, PGmax, C, demands, 
     model.d = pyo.Set(initialize=D)   # Laster
     model.g = pyo.Set(initialize=G)   # Generatorer
 
+    # Define parameters
     model.PGmax = pyo.Param(model.g, initialize=PGmax,  within=pyo.NonNegativeReals)
     model.C = pyo.Param(model.g, initialize=C, within=pyo.NonNegativeReals)
     model.Demands = pyo.Param(model.d, initialize=demands,  within=pyo.NonNegativeReals)
     model.U = pyo.Param(model.d, initialize=U)
     model.location_g = pyo.Param(model.g, initialize=location_g, within=pyo.Reals)
     model.location_d = pyo.Param(model.d, initialize=location_d, within=pyo.Reals)
-
     model.linecap = pyo.Param(model.l, initialize=linecap, within=pyo.NonNegativeReals)
-    model.suseptance = pyo.Param(model.l, initialize=susceptance)
-
+    model.susceptance = pyo.Param(model.l, initialize=susceptance)
+    
     # Defining Varaibles
     model.p_G = pyo.Var(model.g, within=pyo.NonNegativeReals)   # Generation per generator
     model.delta = pyo.Var(model.n)                              # Spenningsvinkel
     model.p_D = pyo.Var(model.d, within=pyo.NonNegativeReals)   # Demand per demand point
     model.flow = pyo.Var(model.l, within=pyo.Reals)             # Flow in lines
-
+    
+    
      ## Task 2-4b and 2-4c
     def objective_rule(model):
         utility = sum(model.U[d] * model.p_D[d] for d in model.d if not math.isnan(model.U[d]))
-        cost_prod = - sum(model.C[g] * model.p_G[g] for g in model.g)
-        return   utility + cost_prod
+        cost_prod = sum(model.C[g] * model.p_G[g] for g in model.g)
+        return utility - cost_prod 
     model.objective = pyo.Objective(rule=objective_rule, sense=pyo.maximize)
     
     # Generator capacity constriant
@@ -166,7 +168,11 @@ def DCOPF_model_multiple_generators_and_loads_SW(N, L, D, G, PGmax, C, demands, 
     ## Task 2-4b and 2-4c
     # Demand constraints
     def demand_rule(model, d):
-        return model.p_D[d] <= model.Demands[d]
+        # Inelastic constraints
+        if math.isnan(model.U[d]):           
+            return model.p_D[d] == model.Demands[d]
+        else:
+            return model.p_D[d] <= model.Demands[d]
     model.demand = pyo.Constraint(model.d, rule=demand_rule)
 
     def power_balance(model, n):
@@ -179,31 +185,19 @@ def DCOPF_model_multiple_generators_and_loads_SW(N, L, D, G, PGmax, C, demands, 
         return sum(model.p_G[g] for g in model.g if model.location_g[g] == n) - sum(model.p_D[d] for d in model.d if model.location_d[d] ==n) == flows[n]
     model.balance = pyo.Constraint(model.n, rule=power_balance)
 
-    # line capacity constraints
+    # Line capacity constraints
     def line_capacity_rule(model, l):
-        return model.flow[l] <= model.linecap[l]
+        return (-model.linecap[l], model.flow[l], model.linecap[l])
     model.line_capacity = pyo.Constraint(model.l, rule=line_capacity_rule)
-
-    def line_capacity_lower_rule(model, l):
-        return -model.linecap[l] <= model.flow[l]
-    model.line_capacity_lower = pyo.Constraint(model.l, rule=line_capacity_lower_rule)
 
     def flow_rule(model, l):
         if l == 1:
-            return model.flow[l] == model.suseptance[l] * (model.delta[1] - model.delta[2])
+            return model.flow[l] == model.susceptance[l] * (model.delta[1] - model.delta[2])
         elif l == 3:
-            return model.flow[l] == model.suseptance[l] * (model.delta[2] - model.delta[3])
+            return model.flow[l] == model.susceptance[l] * (model.delta[2] - model.delta[3])
         elif l == 2:
-            return model.flow[l] == model.suseptance[l] * (model.delta[1] - model.delta[3])
+            return model.flow[l] == model.susceptance[l] * (model.delta[1] - model.delta[3])
     model.flow_rule = pyo.Constraint(model.l, rule=flow_rule)
-
-    # Inelastic Load constraint
-    def inelastic_load(model, d):
-        if math.isnan(model.U[d]):
-            return model.p_D[d] == model.Demands[d]
-        else:
-            return pyo.Constraint.Skip
-    model.inelastic_load = pyo.Constraint(model.d,rule=inelastic_load)
 
     # Reference angle constraint
     def ref_angle(model):
@@ -213,7 +207,7 @@ def DCOPF_model_multiple_generators_and_loads_SW(N, L, D, G, PGmax, C, demands, 
     solver = SolverFactory("gurobi")    # Ensure Gurobi is installed and licenced
     model.dual = pyo.Suffix(direction=pyo.Suffix.IMPORT) # For dual variables
     results = solver.solve(model, tee=True)
-
+   
     print(f"{'='*10} Optimal Solution {'='*10}")
     print(f"Social Welfare: {model.objective():.2f} NOK")
     
@@ -239,9 +233,8 @@ def DCOPF_model_multiple_generators_and_loads_SW(N, L, D, G, PGmax, C, demands, 
         if dual_value is not None:
             print(f"Electricity Price at node {n}: {dual_value/S_base:.2f}")
         else:
-            print(f"Node {g}: No dual value found.")
+            print(f"Node {n}: No dual value found.")
     
-
     # Extract and display dual values for generator capacity constraints 
     print("\nDual values for generator capacity constraints [NOK/MWh]:")
     for g in model.g:
@@ -255,17 +248,17 @@ def DCOPF_model_multiple_generators_and_loads_SW(N, L, D, G, PGmax, C, demands, 
     print("\nDual values for line capacity constraints [NOK/MWh]:")
     for l in model.l:
         dual_value = model.dual.get(model.line_capacity[l])
-        if dual_value is not None:
-            print(f"Line {l}: {dual_value/S_base:.2f}")
-        else:
+        if dual_value is None:
             print(f"Line {l}: No dual value found.")
-
+        elif dual_value != 0 and dual_value <= 0.0: 
+            print(f"Line {l}: {dual_value/S_base:.2f}")
+        elif dual_value != 0 and dual_value >= 0.0 and dual_value is not None: 
+            print(f"Line {l}: {-dual_value/S_base:.2f}") 
+        elif dual_value == 0:
+            print(f"Line {l}: {0.0:.2f}")
+        
     # Extract and display power flow in lines
     print("\nFlow in lines [MW]:")
     for l in model.l:
         print(f"Line {l}: {pyo.value(S_base*model.flow[l]):.2f}")
 
-    # Extract and display voltage angles
-    print("\nVoltage angles [rad]:")
-    for n in model.n:
-        print(f"Node {n}: {pyo.value(model.delta[n]):.4f}")

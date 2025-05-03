@@ -102,8 +102,10 @@ def DCOPF_model(N, L, D, G, PGmax, C, demands, linecap, suseptance, S_base):
     print("\nDual values for line capacity constraints [NOK/MWh]:")
     for l in model.l:
         dual_value = model.dual.get(model.line_capacity[l])
-        if dual_value is not None:
+        if dual_value != 0 and dual_value < 0: 
             print(f"Line {l}: {dual_value/S_base:.2f}")
+        elif dual_value != 0 and dual_value > 0: 
+            print(f"Line {l}: {-dual_value/S_base:.2f}") 
         else:
             print(f"Line {l}: No dual value found.")
 
@@ -111,12 +113,4 @@ def DCOPF_model(N, L, D, G, PGmax, C, demands, linecap, suseptance, S_base):
     print("\nFlow in lines [MW]:")
     for l in model.l:
         print(f"Line {l}: {pyo.value(S_base*model.flow[l]):.2f}")
-
-    # Extract and display voltage angles
-    print("\nVoltage angles [rad]:")
-    for n in model.n:
-        print(f"Node {n}: {pyo.value(model.delta[n]):.4f}")
-
-
-
 

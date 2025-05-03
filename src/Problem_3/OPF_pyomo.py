@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """
+
 Optimal Power Flow with DC power flow
    =====================================
 
@@ -12,6 +13,7 @@ Converted to Python/Pyomo for semester 2018/2019:
 
   (c) Kasper Emil Thorvaldsen, December 2018
 
+  
 Utilized to solve the course project for TET4185 Power Markets
     (c) Bastian Øie, May 2025
         Sverre Beyer, May 2025
@@ -25,34 +27,8 @@ import pandas as pd
 import pyomo.environ as pyo
 from pyomo.opt import SolverFactory
 
-def Main():
-    """ Main function that set up, execute, and store results """
-    
-    Data = Read_Excel("/Users/SverreB/Github_Repo/PowerMarkets_project/data/Nordic_wet.xlsx")    #Master dictionary, created from input data dictionary
-        
-    #Quick check to see that the reference node is valud:
-    if any([Data["Reference node"] <= 0, Data["Reference node"] > Data["Nodes"]["NumNodes"]]):
-        print("Invalid reference node, the number of nodes does not allow this node to be reference!")
-        sys.exit()
-        
-    #Quick check to see that the method is a valid option:
-    if all((Data["DCFlow"] != 1, Data["DCFlow"] != 0)):
-        print("Invalid method chosen. Either choose 1 or 0")
-        sys.exit()
-    
-    #End user-specified parameters
-    
-    #Create matrices for the lines and cables
-    Data = Create_matrices(Data)
-
-    """ Everything is set up, now we run the model """
-    
-    OPF_model(Data)     #Run the model with the set data
-    
-    return()
-
-
 def Read_Excel(name):
+    
     """
     Reads input excel file and reads the data into dataframes.
     Separates between each sheet, and stores into one dictionary
@@ -65,6 +41,7 @@ def Read_Excel(name):
     Num_Names = {"Node Parameters":"NumNodes", "AC Branch Parameters":"NumAC", "DC Link Parameters":"NumDC"}        #Names for numbering
     List_Names = {"Node Parameters":"NodeList", "AC Branch Parameters":"ACList", "DC Link Parameters":"DCList"}     #Names for numbering
     
+    
     for sheet in Excel_sheets:      #For each sheet
         df = pd.read_excel(name, sheet_name = sheet, skiprows = 1)  #Read sheet, exclude title
         
@@ -72,26 +49,32 @@ def Read_Excel(name):
         num = len(df.loc[:])                                        #Find length of dataframe
         df = df.to_dict()
         
+        
+        
         df[Num_Names[sheet]]  = num                                 #Store length of dataframe in dictionary
         df[List_Names[sheet]] = np.arange(1,num+1)
         
         data[Data_names[sheet]] = df                                #Store dataframe in dictionary
         
+        
         #End for
+     
     #Extract data from the declaration sheet
     
     df = pd.read_excel(name, sheet_name = "Declarations", skiprows = 1) #Get from Declaration sheet
     df = df.set_index(df.columns[0])                                    #Make first column index
     df = df.to_dict()                                                   #Convert to dictionary
     
+    
     data["DCFlow"]          = df["Value"][1]    #True: DC power flow, False: Transport network (ATC)
     data["Reference node"]  = df["Value"][2]    #The reference node where Theta = 0
     data["pu-Base"]         = df["Value"][3]    #The per unit base [kW]
     data["ShedCost"]        = df["Value"][4]    #Cost of shedding load
+    
+        
         
     return(data)        #Return datasheet
-    
-
+      
 def Create_matrices(Data):
     
     """
@@ -100,7 +83,9 @@ def Create_matrices(Data):
         - DC-matrix -> Bus incidence matrix for the DC cables. Used in both DCOPF and ATC
         - X-matrix  -> Bus incidence matrix for AC cables. Used in ATC
     """
-
+    
+    
+    
     #Start creating admittance matrix X. Adding in [n-1] is due to avoiding the 0-th index. This is only for DCOPF
 
     B_matrix = np.zeros((Data["Nodes"]["NumNodes"],Data["Nodes"]["NumNodes"]))  #Create empty matrix
@@ -157,7 +142,6 @@ def Create_matrices(Data):
     Data["X-matrix"] = X_matrix         #Store the matrix in the dictionary
     
     return(Data)
-
 
 def OPF_model(Data):
     
@@ -336,9 +320,7 @@ def OPF_model(Data):
     """
         
     #Set the solver for this
-    opt         = SolverFactory("glpk")
-    #opt         = SolverFactory('gurobi',solver_io="python")
-    
+    opt         = SolverFactory("gurobi")
     
     
     #Enable dual variable reading -> important for dual values of results
@@ -475,11 +457,13 @@ def Store_model_data(model,Data):
     DCData      = pd.DataFrame(data=DCData)
     MiscData    = pd.DataFrame(data=MiscData) 
     
+    folder_file_path = "src/Problem_3/"   #Path to the folder where the file should be stored
+
     #Decide what the name of the output file should be
     if Data["DCFlow"] == True:
-        output_file = "DCOPF_results.xlsx"
+        output_file = folder_file_path+"DCOPF_results.xlsx"
     else:
-        output_file = "ATC_results.xlsx"
+        output_file = folder_file_path+"ATC_results.xlsx"
     
     #Store each result in an excel file, given a separate sheet
     with pd.ExcelWriter(output_file) as writer:
@@ -494,5 +478,3 @@ def Store_model_data(model,Data):
 
     return()
 
-
-Main()

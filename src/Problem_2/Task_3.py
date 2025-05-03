@@ -46,14 +46,10 @@ def DCOPF_model_multiple_generators(N, L, D, G, PGmax, C, demands, linecap, suse
         return sum(model.p_G[g] for g in model.g if model.location_g[g] == n) - model.Demands[n] == flows[n]
     model.balance = pyo.Constraint(model.n, rule=power_balance)
 
-    # line capacity constraints
+    # Line capacity constraints
     def line_capacity_rule(model, l):
-        return model.flow[l] <= model.linecap[l]
+        return (-model.linecap[l], model.flow[l], model.linecap[l])
     model.line_capacity = pyo.Constraint(model.l, rule=line_capacity_rule)
-
-    def line_capacity_lower_rule(model, l):
-        return -model.linecap[l] <= model.flow[l]
-    model.line_capacity_lower = pyo.Constraint(model.l, rule=line_capacity_lower_rule)
 
     def flow_rule(model, l):
         if l == 1:
@@ -109,8 +105,10 @@ def DCOPF_model_multiple_generators(N, L, D, G, PGmax, C, demands, linecap, suse
     print("\nDual values for line capacity constraints [NOK/MWh]:")
     for l in model.l:
         dual_value = model.dual.get(model.line_capacity[l])
-        if dual_value is not None:
+        if dual_value != 0 and dual_value < 0: 
             print(f"Line {l}: {dual_value/S_base:.2f}")
+        elif dual_value != 0 and dual_value > 0: 
+            print(f"Line {l}: {-dual_value/S_base:.2f}") 
         else:
             print(f"Line {l}: No dual value found.")
 
@@ -118,13 +116,6 @@ def DCOPF_model_multiple_generators(N, L, D, G, PGmax, C, demands, linecap, suse
     print("\nFlow in lines [MW]:")
     for l in model.l:
         print(f"Line {l}: {pyo.value(S_base*model.flow[l]):.2f}")
-
-    # Extract and display voltage angles
-    print("\nVoltage angles [rad]:")
-    for n in model.n:
-        print(f"Node {n}: {pyo.value(model.delta[n]):.4f}")
-
-
 
 
 
